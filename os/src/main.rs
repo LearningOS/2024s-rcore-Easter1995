@@ -9,14 +9,14 @@
 
 #![deny(missing_docs)]
 #![deny(warnings)]
-#![no_std]
+#![no_std] // 告诉 Rust 编译器不使用 Rust 标准库 std 转而使用核心库 core（core库不需要操作系统的支持）
 #![no_main]
 #![feature(panic_info_message)]
 
 use core::arch::global_asm;
 use log::*;
 
-#[macro_use]
+#[macro_use] // 使用 #[macro_use] 注解将模块中定义的宏导入到当前作用域中
 mod console;
 mod lang_items;
 mod logging;
