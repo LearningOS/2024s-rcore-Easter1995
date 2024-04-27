@@ -1,1 +1,1 @@
-window.SIDEBAR_ITEMS = {"constant":["SBI_CONSOLE_PUTCHAR"],"fn":["console_putchar","sbi_call","shutdown"]};
+window.SIDEBAR_ITEMS = {"fn":["console_getchar","console_putchar","shutdown"]};
