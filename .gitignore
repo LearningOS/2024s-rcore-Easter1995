@@ -4,6 +4,8 @@
 .idea
 Cargo.lock
 target
+ci-user
+user
 os/src/link_app.S
 os/last-*
 os/Cargo.lock
