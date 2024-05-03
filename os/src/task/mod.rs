@@ -16,6 +16,8 @@ mod task;
 
 use crate::loader::{get_app_data, get_num_app};
 use crate::sync::UPSafeCell;
+use crate::syscall::TASK_INFOLIST;
+use crate::timer::get_time_ms;
 use crate::trap::TrapContext;
 use alloc::vec::Vec;
 use lazy_static::*;
@@ -80,6 +82,17 @@ impl TaskManager {
         let next_task = &mut inner.tasks[0];
         next_task.task_status = TaskStatus::Running;
         let next_task_cx_ptr = &next_task.task_cx as *const TaskContext;
+        
+        // 需要修改任务的首次调用时间列表
+        let mut task_init_time_list = TASK_INFOLIST.task_init_times.exclusive_access();
+        if task_init_time_list[0] == 0 {
+            task_init_time_list[0] = get_time_ms();
+        }
+        drop(task_init_time_list);
+        // 第一个任务需要修改状态
+        let mut task_infolist = TASK_INFOLIST.task_infos.exclusive_access();
+        task_infolist[0].change_status(TaskStatus::Running);
+        drop(task_infolist);
         drop(inner);
         let mut _unused = TaskContext::zero_init();
         // before this, we should drop local variables that must be dropped manually
@@ -94,6 +107,11 @@ impl TaskManager {
         let mut inner = self.inner.exclusive_access();
         let cur = inner.current_task;
         inner.tasks[cur].task_status = TaskStatus::Ready;
+
+        let mut task_infolist = TASK_INFOLIST.task_infos.exclusive_access();
+        task_infolist[cur].change_status(TaskStatus::Ready);
+
+        drop(task_infolist);
     }
 
     /// Change the status of current `Running` task into `Exited`.
@@ -101,6 +119,11 @@ impl TaskManager {
         let mut inner = self.inner.exclusive_access();
         let cur = inner.current_task;
         inner.tasks[cur].task_status = TaskStatus::Exited;
+
+        let mut task_infolist = TASK_INFOLIST.task_infos.exclusive_access();
+        task_infolist[cur].change_status(TaskStatus::Exited);
+
+        drop(task_infolist);
     }
 
     /// Find next task to run and return task id.
@@ -143,6 +166,18 @@ impl TaskManager {
             inner.current_task = next;
             let current_task_cx_ptr = &mut inner.tasks[current].task_cx as *mut TaskContext;
             let next_task_cx_ptr = &inner.tasks[next].task_cx as *const TaskContext;
+            
+            // 如果任务第一次调用，需要修改任务的首次调用时间列表
+            let mut task_init_time_list = TASK_INFOLIST.task_init_times.exclusive_access();
+            if task_init_time_list[current] == 0 {
+                task_init_time_list[current] = get_time_ms();
+            }
+            drop(task_init_time_list);
+            // 修改当前任务状态为Running
+            let mut task_infolist = TASK_INFOLIST.task_infos.exclusive_access();
+            task_infolist[current].change_status(TaskStatus::Running);
+            drop(task_infolist);
+            
             drop(inner);
             // before this, we should drop local variables that must be dropped manually
             unsafe {
