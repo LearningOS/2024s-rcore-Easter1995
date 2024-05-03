@@ -1,13 +1,14 @@
 //! Process management syscalls
+use core::mem::{size_of, transmute};
+
 use crate::{
-    config::MAX_SYSCALL_NUM,
-    task::{
-        change_program_brk, exit_current_and_run_next, suspend_current_and_run_next, TaskStatus,
-    },
+    config::MAX_SYSCALL_NUM, mm::translated_byte_buffer, task::{
+        change_program_brk, current_user_token, exit_current_and_run_next, suspend_current_and_run_next, TaskStatus
+    }, timer::get_time_us
 };
 
 #[repr(C)]
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct TimeVal {
     pub sec: usize,
     pub usec: usize,
@@ -43,7 +44,31 @@ pub fn sys_yield() -> isize {
 /// HINT: What if [`TimeVal`] is splitted by two pages ?
 pub fn sys_get_time(_ts: *mut TimeVal, _tz: usize) -> isize {
     trace!("kernel: sys_get_time");
-    -1
+
+    // 尝试将按应用的虚地址指向的缓冲区转换为一组按内核虚地址指向的字节数组切片构成的向量
+    let mut ts_buffer = translated_byte_buffer(current_user_token(), _ts as *const u8, size_of::<TimeVal>());
+    // 计算出正确的时间
+    let us = get_time_us();
+    let time: TimeVal = TimeVal {
+        sec: us / 1_000_000,
+        usec: us % 1_000_000,
+    };
+    // What if [`TimeVal`] is splitted by two pages ?
+    // sec和usec都被转为长度为8以字节为单位的数组
+    let time_bytes: [u8; 16] = unsafe { transmute(time.clone()) };
+    // 判断是否跨页
+    if ts_buffer[0].len() >= 16 {
+        // 第一页就可以存下time
+        let page_ptr = ts_buffer[0].as_mut_ptr() as *mut TimeVal;
+        unsafe {
+            (*page_ptr) = time;
+        }
+    } else {
+        let available_len = ts_buffer[0].len();
+        ts_buffer[0].copy_from_slice(&time_bytes[..available_len]);
+        ts_buffer[1].copy_from_slice(&time_bytes[available_len..]);
+    }
+    0
 }
 
 /// YOUR JOB: Finish sys_task_info to pass testcases

@@ -153,6 +153,10 @@ impl TaskManager {
             panic!("All applications completed!");
         }
     }
+    /// 获取当前任务的id的不可变借用
+    pub fn get_current_id (&self) -> usize {
+        self.inner.access().current_task
+    }
 }
 
 /// Run the first task in task list.
