@@ -66,12 +66,14 @@ lazy_static! {
 
 /// handle syscall exception with `syscall_id` and other arguments
 pub fn syscall(syscall_id: usize, args: [usize; 3]) -> isize {
-    // 初始化task系统调用次数的信息
+    // 初始化任务系统调用次数的信息
     let mut task_infos = TASK_INFOLIST.task_infos.exclusive_access();
     let current_id = TASK_MANAGER.get_current_id();
+    // 更新任务距离第一次调用的时间
     task_infos[current_id].change_time(get_time_ms(), current_id);
 
     match syscall_id {
+        // 保证id合法
         SYSCALL_WRITE => {
             task_infos[current_id].add_syscall_time(SYSCALL_WRITE);
             drop(task_infos);

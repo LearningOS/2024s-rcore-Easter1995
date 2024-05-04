@@ -96,6 +96,17 @@ impl TaskControlBlock {
             None
         }
     }
+    /// 获取任务控制块的可变引用
+    pub fn get_control_block(&mut self) -> &'static mut Self {
+        unsafe{((self) as *mut Self).as_mut().unwrap()}
+    }
+    /// 更新任务地址空间
+    pub fn insert_frame(&mut self, start: usize, end: usize, per: MapPermission) -> isize {
+        let start_va = VirtAddr::from(start);
+        let end_va = VirtAddr::from(end);
+        self.memory_set.insert_framed_area(start_va, end_va, per);
+        0
+    }
 }
 
 #[derive(Copy, Clone, PartialEq)]

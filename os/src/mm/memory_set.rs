@@ -262,6 +262,21 @@ impl MemorySet {
             false
         }
     }
+    /// 检查地址空间是否重复
+    pub fn is_overlap(&self, new_vpn_range: VPNRange) -> bool {
+        // 获取当前地址空间的所有区域
+        let map_areas = &self.areas;
+        // 针对每一个区域检查是否重叠
+        for area in map_areas {
+            // 获取现有虚拟页号范围的不可变引用
+            let cur_vpn_range = &area.vpn_range;
+            // 判断是否重复
+            if cur_vpn_range.get_left() < new_vpn_range.get_right() && cur_vpn_range.get_right() > new_vpn_range.get_left() {
+                return true;
+            } 
+        }
+        false
+    }
 }
 /// map area structure, controls a contiguous piece of virtual memory
 pub struct MapArea {

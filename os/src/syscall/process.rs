@@ -2,11 +2,13 @@
 use core::mem::{size_of, transmute};
 
 use crate::{
-    config::MAX_SYSCALL_NUM, mm::translated_byte_buffer, task::{
+    config::{MAX_SYSCALL_NUM, PAGE_SIZE}, 
+    mm::{translated_byte_buffer, VirtAddr, MapPermission}, 
+    syscall::TASK_INFOLIST, 
+    task::{
         change_program_brk, current_user_token, exit_current_and_run_next, suspend_current_and_run_next, TaskStatus, TASK_MANAGER
     }, 
-    timer::get_time_us,
-    syscall::TASK_INFOLIST
+    timer::get_time_us
 };
 
 #[repr(C)]
@@ -92,7 +94,7 @@ pub fn sys_get_time(_ts: *mut TimeVal, _tz: usize) -> isize {
             (*page_ptr) = time;
         }
     } else {
-        // sec和usec都被转为长度为8以字节为单位的数组
+        // 将已经包装好的time转换为以字节为单位的数组
         let time_bytes: [u8; 16] = unsafe { transmute(time) };
         let available_len = ts_buffer[0].len();
         ts_buffer[0].copy_from_slice(&time_bytes[..available_len]);
@@ -116,6 +118,8 @@ pub fn sys_task_info(_ti: *mut TaskInfo) -> isize {
         syscall_times: task_infos[task_id].syscall_times,
         time: task_infos[task_id].time
     };
+    // What if [`TimeVal`] is splitted by two pages ?
+    // 判断是否跨页
     if ti_buffer[0].len() >= size_of::<TaskInfo>() {
         // 第一页就可以存下info
         let page_ptr = ti_buffer[0].as_mut_ptr() as *mut TaskInfo;
@@ -123,6 +127,7 @@ pub fn sys_task_info(_ti: *mut TaskInfo) -> isize {
             (*page_ptr) = info;
         }
     } else {
+        // 将已经包装好的info转换为以字节为单位的数组
         let available_len = ti_buffer[0].len();
         let info_bytes: [u8; size_of::<TaskInfo>()] = unsafe { transmute(info) };
         ti_buffer[0].copy_from_slice(&info_bytes[..available_len]);
@@ -132,14 +137,42 @@ pub fn sys_task_info(_ti: *mut TaskInfo) -> isize {
 }
 
 // YOUR JOB: Implement mmap.
+// 为了简单，目标虚存区间要求按页对齐，len 可直接按页向上取整，不考虑分配失败时的页回收
 pub fn sys_mmap(_start: usize, _len: usize, _port: usize) -> isize {
     trace!("kernel: sys_mmap NOT IMPLEMENTED YET!");
-    -1
+
+    // start 需要映射的虚存起始地址，要求按页对齐
+    // start 没有按页大小对齐
+    if _start % PAGE_SIZE != 0 {
+        return  -1;
+    }
+    // port & !0x7 != 0 (port 其余位必须为0)
+    // port & 0x7 = 0 (这样的内存无意义)
+    if (_port & !0x7 != 0) || (_port & 0x7 == 0) {
+        return -1;
+    }
+    // [start, start + len) 中存在已经被映射的页
+    let start_vpn = VirtAddr::from(_start).floor();
+    let end_vpn = VirtAddr::from(_start + _len).ceil();
+    if TASK_MANAGER.is_overlap(start_vpn, end_vpn) {
+        return -1;
+    }
+
+    // 参数检查结束，开始分配空间
+    // U模式有效    
+    let per = MapPermission::from_bits((_port as u8) << 1).unwrap() | MapPermission::U;
+    let task_control_block = TASK_MANAGER.get_task_control_block(TASK_MANAGER.get_current_id());
+    
+    task_control_block.insert_frame(_start, _start + _len, per)
 }
 
 // YOUR JOB: Implement munmap.
+// 取消到 [start, start + len) 虚存的映射
 pub fn sys_munmap(_start: usize, _len: usize) -> isize {
     trace!("kernel: sys_munmap NOT IMPLEMENTED YET!");
+
+    
+
     -1
 }
 /// change data segment size
