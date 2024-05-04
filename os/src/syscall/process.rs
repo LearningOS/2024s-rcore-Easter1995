@@ -154,14 +154,14 @@ pub fn sys_mmap(_start: usize, _len: usize, _port: usize) -> isize {
     // [start, start + len) 中存在已经被映射的页
     let start_vpn = VirtAddr::from(_start).floor();
     let end_vpn = VirtAddr::from(_start + _len).ceil();
-    if TASK_MANAGER.is_overlap(start_vpn, end_vpn) {
+    let task_control_block = TASK_MANAGER.get_task_control_block(TASK_MANAGER.get_current_id());
+    if task_control_block.is_overlap(start_vpn, end_vpn) {
         return -1;
     }
 
     // 参数检查结束，开始分配空间
     // U模式有效    
     let per = MapPermission::from_bits((_port as u8) << 1).unwrap() | MapPermission::U;
-    let task_control_block = TASK_MANAGER.get_task_control_block(TASK_MANAGER.get_current_id());
     
     task_control_block.insert_frame(_start, _start + _len, per)
 }
@@ -170,9 +170,21 @@ pub fn sys_mmap(_start: usize, _len: usize, _port: usize) -> isize {
 // 取消到 [start, start + len) 虚存的映射
 pub fn sys_munmap(_start: usize, _len: usize) -> isize {
     trace!("kernel: sys_munmap NOT IMPLEMENTED YET!");
-
-    
-
+    // start 需要映射的虚存起始地址，要求按页对齐
+    // start 没有按页大小对齐
+    if _start % PAGE_SIZE != 0 {
+        return  -1;
+    }
+    // [start, start + len) 中存在未被映射的虚存
+    let start_vpn = VirtAddr::from(_start).floor();
+    let end_vpn = VirtAddr::from(_start + _len).ceil();
+    let task_control_block = TASK_MANAGER.get_task_control_block(TASK_MANAGER.get_current_id());
+    // 不存在未被映射的虚存
+    if task_control_block.memory_set.is_all_exist(start_vpn, end_vpn) {
+        // 这片区域的虚存都存在，取消映射
+        task_control_block.memory_set.mem_set_unmap(start_vpn, end_vpn);
+        return 0;
+    }
     -1
 }
 /// change data segment size

@@ -14,6 +14,7 @@ use alloc::vec::Vec;
 use core::arch::asm;
 use lazy_static::*;
 use riscv::register::satp;
+use core::cell::RefCell;
 
 extern "C" {
     fn stext();
@@ -268,17 +269,42 @@ impl MemorySet {
         let map_areas = &self.areas;
         // 针对每一个区域检查是否重叠
         for area in map_areas {
-            // 获取现有虚拟页号范围的不可变引用
-            let cur_vpn_range = &area.vpn_range;
-            // 判断是否重复
-            if cur_vpn_range.get_left() < new_vpn_range.get_right() && cur_vpn_range.get_right() > new_vpn_range.get_left() {
+            if area.is_overlap(new_vpn_range) {
                 return true;
-            } 
+            }
         }
         false
     }
+    /// 检查地址是否全部存在
+    pub fn is_all_exist(&self, start: VirtPageNum, end: VirtPageNum) -> bool {
+        let vpn_range = VPNRange::new(start, end);
+        // 遍历这一片vpn
+        for vpn in vpn_range {
+            if let Some(pte) = self.translate(vpn) {
+                // 如果有某个vpn是无效的，说明有地址不存在
+                if !pte.is_valid() {
+                    return false;
+                }    
+            }
+        }
+        true
+    }
+    /// 解除某片区域的映射
+    pub fn mem_set_unmap(&mut self, start: VirtPageNum, end: VirtPageNum) {
+        let vpn_range = VPNRange::new(start, end);
+        let areas_ref_cell = RefCell::new(&mut self.areas);
+
+        for vpn in vpn_range {
+            self.page_table.unmap(vpn);
+        }
+
+        areas_ref_cell.borrow_mut().retain(|area| {
+            !area.is_overlap(vpn_range)
+        });
+    }
 }
 /// map area structure, controls a contiguous piece of virtual memory
+// 相当于逻辑段
 pub struct MapArea {
     vpn_range: VPNRange,
     data_frames: BTreeMap<VirtPageNum, FrameTracker>,
@@ -370,6 +396,16 @@ impl MapArea {
             }
             current_vpn.step();
         }
+    }
+    /// 检查area是否重叠
+    pub fn is_overlap(&self, vpn_range: VPNRange) -> bool {
+        // 获取现有虚拟页号范围的不可变引用
+        let cur_vpn_range = self.vpn_range;
+        // 判断是否重复
+        if cur_vpn_range.get_left() < vpn_range.get_right() && cur_vpn_range.get_right() > vpn_range.get_left() {
+            return true;
+        }
+        false 
     }
 }
 

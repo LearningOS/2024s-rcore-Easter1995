@@ -15,7 +15,6 @@ mod switch;
 mod task;
 
 use crate::loader::{get_app_data, get_num_app};
-use crate::mm::VirtPageNum;
 use crate::sync::UPSafeCell;
 use crate::syscall::TASK_INFOLIST;
 use crate::timer::get_time_ms;
@@ -23,7 +22,6 @@ use crate::trap::TrapContext;
 use alloc::vec::Vec;
 use lazy_static::*;
 use switch::__switch;
-use crate::mm::VPNRange;
 pub use task::{TaskControlBlock, TaskStatus};
 
 pub use context::TaskContext;
@@ -198,19 +196,6 @@ impl TaskManager {
     pub fn get_task_control_block(&self, task_id: usize) -> &'static mut TaskControlBlock {
         let mut inner = self.inner.exclusive_access();
         inner.tasks[task_id].get_control_block()
-    }
-    /// 检查是否重复分配空间
-    pub fn is_overlap(&self, start: VirtPageNum, end: VirtPageNum) -> bool {
-        let cur_task_control_block = self.get_task_control_block(self.get_current_id());
-        // 获取到当前任务地址空间的不可变引用
-        let cur_mem_set = &cur_task_control_block.memory_set;
-        // 获取到想要分配的虚拟页号的范围
-        let new_vpn_range = VPNRange::new(start, end);
-        // 判断跟当前地址空间的已有页号是否重复
-        if cur_mem_set.is_overlap(new_vpn_range) {
-            return true;
-        }
-        false
     }
 }
 
