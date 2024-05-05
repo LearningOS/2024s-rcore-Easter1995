@@ -12,9 +12,9 @@ use alloc::collections::BTreeMap;
 use alloc::sync::Arc;
 use alloc::vec::Vec;
 use core::arch::asm;
+use core::cell::RefCell;
 use lazy_static::*;
 use riscv::register::satp;
-use core::cell::RefCell;
 
 extern "C" {
     fn stext();
@@ -284,7 +284,7 @@ impl MemorySet {
                 // 如果有某个vpn是无效的，说明有地址不存在
                 if !pte.is_valid() {
                     return false;
-                }    
+                }
             }
         }
         true
@@ -293,14 +293,22 @@ impl MemorySet {
     pub fn mem_set_unmap(&mut self, start: VirtPageNum, end: VirtPageNum) {
         let vpn_range = VPNRange::new(start, end);
         let areas_ref_cell = RefCell::new(&mut self.areas);
-
-        for vpn in vpn_range {
-            self.page_table.unmap(vpn);
+        // 移除掉页表的表项和这片区域对应的物理帧
+        // for vpn in vpn_range {
+        //     self.page_table.unmap(vpn);
+        // }
+        
+        // MapArea里面的unmap包含了移除掉页表项，直接移除这片area即可
+        for area in areas_ref_cell.borrow_mut().iter_mut() {
+            if area.is_overlap(vpn_range) {
+                area.unmap(&mut self.page_table);
+            }
         }
-
-        areas_ref_cell.borrow_mut().retain(|area| {
-            !area.is_overlap(vpn_range)
-        });
+        
+        // 移除掉areas里面对这片逻辑段的记录
+        areas_ref_cell
+            .borrow_mut()
+            .retain(|area| !area.is_overlap(vpn_range));
     }
 }
 /// map area structure, controls a contiguous piece of virtual memory
@@ -402,10 +410,12 @@ impl MapArea {
         // 获取现有虚拟页号范围的不可变引用
         let cur_vpn_range = self.vpn_range;
         // 判断是否重复
-        if cur_vpn_range.get_left() < vpn_range.get_right() && cur_vpn_range.get_right() > vpn_range.get_left() {
+        if cur_vpn_range.get_left() < vpn_range.get_right()
+            && cur_vpn_range.get_right() > vpn_range.get_left()
+        {
             return true;
         }
-        false 
+        false
     }
 }
 
