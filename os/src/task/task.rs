@@ -1,15 +1,16 @@
 //! Types related to task management & Functions for completely changing TCB
 use super::TaskContext;
 use super::{kstack_alloc, pid_alloc, KernelStack, PidHandle};
-use crate::config::TRAP_CONTEXT_BASE;
+use crate::config::{TRAP_CONTEXT_BASE, BIG_STRIDE};
 use crate::fs::{File, Stdin, Stdout};
-use crate::mm::{MemorySet, PhysPageNum, VirtAddr, KERNEL_SPACE};
+use crate::mm::{MapPermission, MemorySet, PhysPageNum, VirtAddr, KERNEL_SPACE, VirtPageNum, VPNRange};
 use crate::sync::UPSafeCell;
 use crate::trap::{trap_handler, TrapContext};
 use alloc::sync::{Arc, Weak};
 use alloc::vec;
 use alloc::vec::Vec;
 use core::cell::RefMut;
+use core::usize;
 
 /// Task control block structure
 ///
@@ -21,7 +22,14 @@ pub struct TaskControlBlock {
 
     /// Kernel stack corresponding to PID
     pub kernel_stack: KernelStack,
+    
+    /// 不可变
+    /// 优先级
+    pub priority: UPSafeCell<isize>,
 
+    /// 步长
+    pub stride: UPSafeCell<isize>,
+    
     /// Mutable
     inner: UPSafeCell<TaskControlBlockInner>,
 }
@@ -35,6 +43,22 @@ impl TaskControlBlock {
     pub fn get_user_token(&self) -> usize {
         let inner = self.inner_exclusive_access();
         inner.memory_set.token()
+    }
+    /// Update Stride
+    pub fn update_stride(&self){
+        let pass = BIG_STRIDE / *self.priority.access();
+        let mut stride_to_update = self.stride.exclusive_access();
+        // 如果没溢出，stride += pass
+        if stride_to_update.wrapping_add(pass) > *stride_to_update {
+            *stride_to_update += pass;
+        }
+    }
+    /// Update Stride When Overflow
+    pub fn update_stride_when_overflow(&self, min_stride: isize) {
+        let mut stride_to_update = self.stride.exclusive_access();
+        if *stride_to_update - min_stride >= 0 {
+            *stride_to_update -= min_stride;
+        }
     }
 }
 
