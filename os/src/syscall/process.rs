@@ -2,15 +2,9 @@
 use alloc::sync::Arc;
 use core::mem::{size_of, transmute};
 use crate::{
-    config::{MAX_SYSCALL_NUM, PAGE_SIZE},
-    loader::get_app_data_by_name,
-    mm::{translated_refmut, translated_str, translated_byte_buffer, VirtAddr, MapPermission},
-    task::{
-        add_task, current_task, current_user_token, exit_current_and_run_next,
-        suspend_current_and_run_next, TaskStatus,
-    },
-    timer::get_time_us,
-    syscall::TASK_INFOLIST, 
+    config::{MAX_SYSCALL_NUM, PAGE_SIZE}, loader::get_app_data_by_name, mm::{translated_byte_buffer, translated_refmut, translated_str, MapPermission, VirtAddr}, syscall::TASK_INFOLIST, task::{
+        add_task, current_task, current_user_token, exit_current_and_run_next, suspend_current_and_run_next, TaskControlBlock, TaskStatus
+    }, timer::get_time_us 
 };
 
 #[repr(C)]
@@ -304,12 +298,20 @@ pub fn sys_spawn(_path: *const u8) -> isize {
 
     if let Some(app) = get_app_data_by_name(path.as_str()) {
         let current_task = current_task().unwrap();
-        let new_task = current_task.fork();
+        // 但提醒读者 spawn 不必像 fork 一样复制父进程的地址空间
+        // let new_task = current_task.fork();
+        // let new_pid = new_task.getpid();
+        // new_task.exec(app);
+
+        // 手动创建一个任务
+        // 新建任务控制块
+        let new_task = Arc::new(TaskControlBlock::new(app));
         let new_pid = new_task.getpid();
-        // 加载可执行文件
-        new_task.exec(app);
         // 添加到TASK_MANAGER
-        add_task(new_task);
+        add_task(new_task.clone());
+        // 添加新进程到现在任务的子进程
+        let mut parent_inner = current_task.inner_exclusive_access();
+        parent_inner.children.push(new_task.clone());
         // 返回pid
         return new_pid as isize;
     }
