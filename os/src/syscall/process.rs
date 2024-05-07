@@ -331,7 +331,7 @@ pub fn sys_set_priority(_prio: isize) -> isize {
         return -1;
     }
     let current_task = current_task().unwrap();
-    let mut cur_pri = current_task.priority_exclusive_access();
+    let mut cur_pri = current_task.priority.exclusive_access();
     *cur_pri = _prio;
     _prio
 }

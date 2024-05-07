@@ -1,13 +1,14 @@
 //! Types related to task management & Functions for completely changing TCB
 use super::TaskContext;
 use super::{kstack_alloc, pid_alloc, KernelStack, PidHandle};
-use crate::config::TRAP_CONTEXT_BASE;
+use crate::config::{TRAP_CONTEXT_BASE, BIG_STRIDE};
 use crate::mm::{MapPermission, MemorySet, PhysPageNum, VirtAddr, KERNEL_SPACE, VirtPageNum, VPNRange};
 use crate::sync::UPSafeCell;
 use crate::trap::{trap_handler, TrapContext};
 use alloc::sync::{Arc, Weak};
 use alloc::vec::Vec;
 use core::cell::RefMut;
+use core::usize;
 
 /// Task control block structure
 ///
@@ -22,10 +23,10 @@ pub struct TaskControlBlock {
     
     /// 不可变
     /// 优先级
-    priority: UPSafeCell<isize>,
+    pub priority: UPSafeCell<isize>,
 
     /// 步长
-    stride: UPSafeCell<usize>,
+    pub stride: UPSafeCell<isize>,
     
     /// Mutable
     inner: UPSafeCell<TaskControlBlockInner>,
@@ -41,13 +42,21 @@ impl TaskControlBlock {
         let inner = self.inner_exclusive_access();
         inner.memory_set.token()
     }
-    /// Get the mutable reference of the priority
-    pub fn priority_exclusive_access(&self) -> RefMut<'_, isize> {
-        self.priority.exclusive_access()
+    /// Update Stride
+    pub fn update_stride(&self){
+        let pass = BIG_STRIDE / *self.priority.access();
+        let mut stride_to_update = self.stride.exclusive_access();
+        // 如果没溢出，stride += pass
+        if stride_to_update.wrapping_add(pass) > *stride_to_update {
+            *stride_to_update += pass;
+        }
     }
-    /// Get the mutable reference of the stride
-    pub fn stride_exclusive_access(&self) -> RefMut<'_, usize> {
-        self.stride.exclusive_access()
+    /// Update Stride When Overflow
+    pub fn update_stride_when_overflow(&self, min_stride: isize) {
+        let mut stride_to_update = self.stride.exclusive_access();
+        if *stride_to_update - min_stride >= 0 {
+            *stride_to_update -= min_stride;
+        }
     }
 }
 
