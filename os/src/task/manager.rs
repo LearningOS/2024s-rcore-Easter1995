@@ -55,7 +55,7 @@ impl TaskManager {
         for i in 0..self.ready_queue.len() {
             let task = self.ready_queue.get(i).unwrap();
             let stride = *task.stride.access();
-            if stride < min_stride {
+            if stride <= min_stride {
                 min_index = i;
                 min_stride = stride;
             }
