@@ -32,3 +32,10 @@
 - 没太看懂这个章节需要干嘛，不用实现stride算法吗？
 - 直接在TCB里面添加可变的两个属性，priority和stride即可；以及可以访问并修改这两个值的函数（仿照inner_exclusive_access）
 - priority初始值为16，stride初始值为0
+
+stride算法的实现：
+
+- 以前的算法是先进先出，直接fetch ready_queue中的第一个，现在从当前 runnable 态的进程中选择 stride 最小的进程调度
+- pass = BigStride / priority，每次取出一个任务，应该更新其步长，让stride+=pass
+- 注意，要判断stride是否溢出，溢出才+=pass
+- 而且找最小stride的时候，使用暴力枚举，这样就允许stride重复，因为始终能找出一个“最小”的stride，让任务可以执行完
