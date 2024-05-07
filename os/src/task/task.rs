@@ -19,7 +19,14 @@ pub struct TaskControlBlock {
 
     /// Kernel stack corresponding to PID
     pub kernel_stack: KernelStack,
+    
+    /// 不可变
+    /// 优先级
+    priority: UPSafeCell<isize>,
 
+    /// 步长
+    stride: UPSafeCell<usize>,
+    
     /// Mutable
     inner: UPSafeCell<TaskControlBlockInner>,
 }
@@ -33,6 +40,14 @@ impl TaskControlBlock {
     pub fn get_user_token(&self) -> usize {
         let inner = self.inner_exclusive_access();
         inner.memory_set.token()
+    }
+    /// Get the mutable reference of the priority
+    pub fn priority_exclusive_access(&self) -> RefMut<'_, isize> {
+        self.priority.exclusive_access()
+    }
+    /// Get the mutable reference of the stride
+    pub fn stride_exclusive_access(&self) -> RefMut<'_, usize> {
+        self.stride.exclusive_access()
     }
 }
 
@@ -125,6 +140,12 @@ impl TaskControlBlock {
         let task_control_block = Self {
             pid: pid_handle,
             kernel_stack,
+            priority: unsafe {
+                UPSafeCell::new(16)
+            },
+            stride: unsafe {
+                UPSafeCell::new(0)
+            },
             inner: unsafe {
                 UPSafeCell::new(TaskControlBlockInner {
                     trap_cx_ppn,
@@ -198,6 +219,12 @@ impl TaskControlBlock {
         let task_control_block = Arc::new(TaskControlBlock {
             pid: pid_handle,
             kernel_stack,
+            priority: unsafe {
+                UPSafeCell::new(16)
+            },
+            stride: unsafe {
+                UPSafeCell::new(0)
+            },
             inner: unsafe {
                 UPSafeCell::new(TaskControlBlockInner {
                     trap_cx_ppn,

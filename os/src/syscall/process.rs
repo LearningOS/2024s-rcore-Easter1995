@@ -319,10 +319,19 @@ pub fn sys_spawn(_path: *const u8) -> isize {
 }
 
 /// YOUR JOB: Set task priority.
+/// stride 调度要求进程优先级 >= 2 ，所以设定进程优先级 <= 1 会导致错误。
+/// 进程初始 stride 设置为 0 即可。
+/// 进程初始优先级设置为 16。
 pub fn sys_set_priority(_prio: isize) -> isize {
     trace!(
         "kernel:pid[{}] sys_set_priority NOT IMPLEMENTED",
         current_task().unwrap().pid.0
     );
-    -1
+    if _prio <= 1 {
+        return -1;
+    }
+    let current_task = current_task().unwrap();
+    let mut cur_pri = current_task.priority_exclusive_access();
+    *cur_pri = _prio;
+    _prio
 }
