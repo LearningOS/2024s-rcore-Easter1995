@@ -299,6 +299,20 @@ pub fn sys_spawn(_path: *const u8) -> isize {
         "kernel:pid[{}] sys_spawn NOT IMPLEMENTED",
         current_task().unwrap().pid.0
     );
+    let token = current_user_token();
+    let path = translated_str(token, _path);
+
+    if let Some(app) = get_app_data_by_name(path.as_str()) {
+        let current_task = current_task().unwrap();
+        let new_task = current_task.fork();
+        let new_pid = new_task.getpid();
+        // 加载可执行文件
+        new_task.exec(app);
+        // 添加到TASK_MANAGER
+        add_task(new_task);
+        // 返回pid
+        return new_pid as isize;
+    }
     -1
 }
 
