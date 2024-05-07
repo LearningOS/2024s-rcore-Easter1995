@@ -52,15 +52,52 @@ const SYSCALL_SPAWN: usize = 400;
 const SYSCALL_TASK_INFO: usize = 410;
 
 mod fs;
-mod process;
+pub mod process;
 
 use fs::*;
 use process::*;
-
 use crate::fs::Stat;
+use lazy_static::*;
+use alloc::collections::BTreeMap;
+use crate::{
+    sync::UPSafeCell, task::current_task, timer::get_time_ms
+};
 
+
+/// 所有task的信息
+pub struct TaskInfoList {
+    /// 任务信息（任务id，任务信息）
+    pub task_infos: UPSafeCell<BTreeMap<usize, TaskInfo>>,
+    /// 任务第一次被初始化的时间（任务id，任务初始化时间）
+    pub task_init_times: UPSafeCell<BTreeMap<usize, usize>>,
+}
+
+lazy_static! {
+    /// 创建全局变量TASK_INFOS实例，包含两个BTreeMap
+    pub static ref TASK_INFOLIST: TaskInfoList = {
+        TaskInfoList {
+            task_infos: unsafe {
+                UPSafeCell::new(BTreeMap::new())
+            },
+            task_init_times: unsafe {
+                UPSafeCell::new(BTreeMap::new())
+            }
+        }
+    };
+}
 /// handle syscall exception with `syscall_id` and other arguments
-pub fn syscall(syscall_id: usize, args: [usize; 4]) -> isize {
+pub fn syscall(syscall_id: usize, args: [usize; 3]) -> isize {
+    // 获取任务信息列表
+    let mut task_infos = TASK_INFOLIST.task_infos.exclusive_access();
+    let current_id = current_task().unwrap().pid.0;
+    // 获取当前任务信息
+    let info = task_infos.get_mut(&current_id).unwrap();
+    // 更新任务距离第一次调用的时间
+    info.change_time(get_time_ms(), current_id);
+    // 更新任务系统调用次数
+    info.add_syscall_time(current_id);
+    drop(task_infos);
+
     match syscall_id {
         SYSCALL_OPEN => sys_open(args[1] as *const u8, args[2] as u32),
         SYSCALL_CLOSE => sys_close(args[0]),

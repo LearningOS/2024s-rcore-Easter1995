@@ -94,6 +94,25 @@ impl TaskControlBlockInner {
             self.fd_table.len() - 1
         }
     }
+    /// 检查是否重复分配空间
+    pub fn is_overlap(&self, start: VirtPageNum, end: VirtPageNum) -> bool {
+        // 获取到当前任务地址空间的不可变引用
+        let cur_mem_set = &self.memory_set;
+        // 获取到想要分配的虚拟页号的范围
+        let new_vpn_range = VPNRange::new(start, end);
+        // 判断跟当前地址空间的已有页号是否重复
+        if cur_mem_set.is_overlap(new_vpn_range) {
+            return true;
+        }
+        false
+    }
+    /// 更新任务地址空间
+    pub fn insert_frame(&mut self, start: usize, end: usize, per: MapPermission) -> isize {
+        let start_va = VirtAddr::from(start);
+        let end_va = VirtAddr::from(end);
+        self.memory_set.insert_framed_area(start_va, end_va, per);
+        0
+    }
 }
 
 impl TaskControlBlock {

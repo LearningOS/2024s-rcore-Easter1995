@@ -288,3 +288,11 @@ where
 }
 /// a simple range structure for virtual page number
 pub type VPNRange = SimpleRange<VirtPageNum>;
+impl VPNRange {
+    pub fn get_left(&self) -> VirtPageNum {
+        self.l
+    }
+    pub fn get_right(&self) -> VirtPageNum {
+        self.r
+    }
+}

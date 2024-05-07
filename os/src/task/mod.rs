@@ -23,6 +23,7 @@ mod switch;
 mod task;
 
 use crate::fs::{open_file, OpenFlags};
+use crate::{loader::get_app_data_by_name, syscall::TASK_INFOLIST};
 use alloc::sync::Arc;
 pub use context::TaskContext;
 use lazy_static::*;
@@ -40,6 +41,7 @@ pub use processor::{
 pub fn suspend_current_and_run_next() {
     // There must be an application running.
     let task = take_current_task().unwrap();
+    let id = task.getpid();
 
     // ---- access current TCB exclusively
     let mut task_inner = task.inner_exclusive_access();
@@ -48,6 +50,12 @@ pub fn suspend_current_and_run_next() {
     task_inner.task_status = TaskStatus::Ready;
     drop(task_inner);
     // ---- release current PCB
+
+    // 修改任务信息列表
+    let mut task_infos = TASK_INFOLIST.task_infos.exclusive_access();
+    let info = task_infos.get_mut(&id).unwrap();
+    info.change_status(TaskStatus::Ready);
+    drop(task_infos);
 
     // push back to ready queue.
     add_task(task);
@@ -64,6 +72,13 @@ pub fn exit_current_and_run_next(exit_code: i32) {
     let task = take_current_task().unwrap();
 
     let pid = task.getpid();
+
+    // 修改任务信息列表
+    let mut task_infos = TASK_INFOLIST.task_infos.exclusive_access();
+    let info = task_infos.get_mut(&pid).unwrap();
+    info.change_status(TaskStatus::Zombie);
+    drop(task_infos);
+
     if pid == IDLE_PID {
         println!(
             "[kernel] Idle process exit with exit_code {} ...",
@@ -79,7 +94,7 @@ pub fn exit_current_and_run_next(exit_code: i32) {
     // Record exit code
     inner.exit_code = exit_code;
     // do not move to its parent but under initproc
-
+    
     // ++++++ access initproc TCB exclusively
     {
         let mut initproc_inner = INITPROC.inner_exclusive_access();
