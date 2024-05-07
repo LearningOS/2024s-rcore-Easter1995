@@ -8,6 +8,8 @@ use super::__switch;
 use super::{fetch_task, TaskStatus};
 use super::{TaskContext, TaskControlBlock};
 use crate::sync::UPSafeCell;
+use crate::syscall::{TASK_INFOLIST, process::TaskInfo};
+use crate::timer::get_time_ms;
 use crate::trap::TrapContext;
 use alloc::sync::Arc;
 use lazy_static::*;
@@ -55,12 +57,33 @@ lazy_static! {
 pub fn run_tasks() {
     loop {
         let mut processor = PROCESSOR.exclusive_access();
+        let mut task_infos = TASK_INFOLIST.task_infos.exclusive_access();
+        let mut task_initial_times = TASK_INFOLIST.task_init_times.exclusive_access();
+        
         if let Some(task) = fetch_task() {
             let idle_task_cx_ptr = processor.get_idle_task_cx_ptr();
             // access coming task TCB exclusively
             let mut task_inner = task.inner_exclusive_access();
             let next_task_cx_ptr = &task_inner.task_cx as *const TaskContext;
             task_inner.task_status = TaskStatus::Running;
+            
+            // 这个任务的状态要改为Running,如果信息列表里面还没有这个任务，就新建一个任务信息
+            let id = task.pid.0;
+            if let Some(task_info) = task_infos.get_mut(&id) {
+                task_info.change_status(TaskStatus::Running);
+            } else {
+                let mut new_task_info = TaskInfo::new();
+                new_task_info.change_status(TaskStatus::Running);
+                task_infos.insert(id, new_task_info);
+            }
+            drop(task_infos);
+            
+            // 如果该任务是新的，修改它的初始化时间
+            if task_initial_times.get_mut(&id).is_none() {
+                task_initial_times.insert(id, get_time_ms());
+            }
+            drop(task_initial_times);
+
             // release coming task_inner manually
             drop(task_inner);
             // release coming task TCB manually
