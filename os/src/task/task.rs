@@ -158,6 +158,12 @@ impl TaskControlBlock {
         let task_control_block = Self {
             pid: pid_handle,
             kernel_stack,
+            priority: unsafe {
+                UPSafeCell::new(16)
+            },
+            stride: unsafe {
+              UPSafeCell::new(0)  
+            },
             inner: unsafe {
                 UPSafeCell::new(TaskControlBlockInner {
                     trap_cx_ppn,
@@ -246,6 +252,12 @@ impl TaskControlBlock {
         let task_control_block = Arc::new(TaskControlBlock {
             pid: pid_handle,
             kernel_stack,
+            priority: unsafe {
+                UPSafeCell::new(16)
+            },
+            stride: unsafe {
+              UPSafeCell::new(0)  
+            },
             inner: unsafe {
                 UPSafeCell::new(TaskControlBlockInner {
                     trap_cx_ppn,
