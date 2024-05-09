@@ -1,5 +1,4 @@
-b rust_main
-b src/syscall/process.rs:120
+b src/syscall/fs.rs:93
 
 define dss
   dashboard source -output /dev/pts/$arg0

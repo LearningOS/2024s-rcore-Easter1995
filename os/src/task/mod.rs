@@ -23,7 +23,7 @@ mod switch;
 mod task;
 
 use crate::fs::{open_file, OpenFlags};
-use crate::{loader::get_app_data_by_name, syscall::TASK_INFOLIST};
+use crate::syscall::TASK_INFOLIST;
 use alloc::sync::Arc;
 pub use context::TaskContext;
 use lazy_static::*;

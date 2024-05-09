@@ -5,11 +5,10 @@ use core::mem::{size_of, transmute};
 use crate::{
     config::{MAX_SYSCALL_NUM, PAGE_SIZE},
     fs::{open_file, OpenFlags},
-    loader::get_app_data_by_name,
     mm::{translated_refmut, translated_str, translated_byte_buffer, VirtAddr, MapPermission},
     task::{
         add_task, current_task, current_user_token, exit_current_and_run_next,
-        suspend_current_and_run_next, TaskStatus,
+        suspend_current_and_run_next, TaskStatus, TaskControlBlock
     },
     timer::get_time_us,
     syscall::TASK_INFOLIST, 
@@ -65,13 +64,13 @@ impl TaskInfo {
         self.time = cur_time - initial_time;
     }
 }
-
+/// 退出
 pub fn sys_exit(exit_code: i32) -> ! {
     trace!("kernel:pid[{}] sys_exit", current_task().unwrap().pid.0);
     exit_current_and_run_next(exit_code);
     panic!("Unreachable in sys_exit!");
 }
-
+/// 转让cpu
 pub fn sys_yield() -> isize {
     //trace!("kernel: sys_yield");
     suspend_current_and_run_next();
@@ -300,6 +299,30 @@ pub fn sys_spawn(_path: *const u8) -> isize {
         "kernel:pid[{}] sys_spawn NOT IMPLEMENTED",
         current_task().unwrap().pid.0
     );
+    let token = current_user_token();
+    let path = translated_str(token, _path);
+
+    if let Some(app_inode) = open_file(path.as_str(), OpenFlags::RDONLY) {
+        let current_task = current_task().unwrap();
+        // 但提醒读者 spawn 不必像 fork 一样复制父进程的地址空间
+        // let new_task = current_task.fork();
+        // let new_pid = new_task.getpid();
+        // new_task.exec(app);
+
+        // 手动创建一个任务
+        // 从索引节点获取数据
+        let all_data = app_inode.read_all();
+        // 新建任务控制块
+        let new_task = Arc::new(TaskControlBlock::new(all_data.as_slice()));
+        let new_pid = new_task.getpid();
+        // 添加到TASK_MANAGER
+        add_task(new_task.clone());
+        // 添加新进程到现在任务的子进程
+        let mut parent_inner = current_task.inner_exclusive_access();
+        parent_inner.children.push(new_task.clone());
+        // 返回pid
+        return new_pid as isize;
+    }
     -1
 }
 

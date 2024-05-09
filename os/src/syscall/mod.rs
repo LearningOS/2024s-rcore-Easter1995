@@ -86,7 +86,7 @@ lazy_static! {
     };
 }
 /// handle syscall exception with `syscall_id` and other arguments
-pub fn syscall(syscall_id: usize, args: [usize; 3]) -> isize {
+pub fn syscall(syscall_id: usize, args: [usize; 4]) -> isize {
     // 获取任务信息列表
     let mut task_infos = TASK_INFOLIST.task_infos.exclusive_access();
     let current_id = current_task().unwrap().pid.0;
