@@ -4,7 +4,7 @@
 //!
 //! `UPSafeCell<OSInodeInner>` -> `OSInode`: for static `ROOT_INODE`,we
 //! need to wrap `OSInodeInner` into `UPSafeCell`
-use super::File;
+use super::{File, Stat, StatMode};
 use crate::drivers::BLOCK_DEVICE;
 use crate::mm::UserBuffer;
 use crate::sync::UPSafeCell;
@@ -55,6 +55,7 @@ impl OSInode {
 }
 
 lazy_static! {
+    /// 全局变量ROOT_INODE
     pub static ref ROOT_INODE: Arc<Inode> = {
         let efs = EasyFileSystem::open(BLOCK_DEVICE.clone());
         Arc::new(EasyFileSystem::root_inode(&efs))
@@ -124,6 +125,7 @@ pub fn open_file(name: &str, flags: OpenFlags) -> Option<Arc<OSInode>> {
     }
 }
 
+/// 为每个索引节点实现文件特征
 impl File for OSInode {
     fn readable(&self) -> bool {
         self.readable
@@ -154,5 +156,22 @@ impl File for OSInode {
             total_write_size += write_size;
         }
         total_write_size
+    }
+    /// 获取该节点的状态
+    fn stat(&self) -> Stat {
+        let inner = self.inner.access();
+        let ino = inner.inode.find_inode_id_by_pos() as u64;
+        let mut mode = StatMode::FILE;
+        if inner.inode.is_dir() {
+            mode = StatMode::DIR;
+        } 
+        let nlink = inner.inode.get_hard_link_num();
+        Stat { 
+            dev: 0,
+            ino,
+            mode,
+            nlink,
+            pad: [0; 7] 
+        }
     }
 }

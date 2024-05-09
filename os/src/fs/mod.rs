@@ -4,6 +4,7 @@ mod inode;
 mod stdio;
 
 use crate::mm::UserBuffer;
+pub use crate::fs::inode::ROOT_INODE;
 
 /// trait File for all file types
 pub trait File: Send + Sync {
@@ -15,6 +16,8 @@ pub trait File: Send + Sync {
     fn read(&self, buf: UserBuffer) -> usize;
     /// write to the file from buf, return the number of bytes written
     fn write(&self, buf: UserBuffer) -> usize;
+    /// 文件状态
+    fn stat(&self) -> Stat;
 }
 
 /// The stat of a inode
@@ -22,6 +25,7 @@ pub trait File: Send + Sync {
 #[derive(Debug)]
 pub struct Stat {
     /// ID of device containing file
+    /// 文件所在磁盘驱动器号，该实验中写死为 0 即可
     pub dev: u64,
     /// inode number
     pub ino: u64,
@@ -31,6 +35,19 @@ pub struct Stat {
     pub nlink: u32,
     /// unused pad
     pad: [u64; 7],
+}
+
+impl Stat {
+    /// 新建Stat
+    pub fn new() -> Stat {
+        Stat {
+            dev: 0,
+            ino: 0,
+            mode: StatMode::NULL,
+            nlink: 0,
+            pad: [0; 7],
+        }
+    }
 }
 
 bitflags! {

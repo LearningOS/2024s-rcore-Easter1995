@@ -86,6 +86,8 @@ pub struct DiskInode {
     pub indirect1: u32,
     pub indirect2: u32,
     type_: DiskInodeType,
+    // 硬连接数量，mut
+    pub hard_links_num: u32
 }
 
 impl DiskInode {
@@ -386,6 +388,17 @@ impl DiskInode {
             start = end_current_block;
         }
         write_size
+    }
+    /// 增加硬连接数量
+    pub fn hard_link_add(&mut self) {
+        self.hard_links_num += 1;
+    }
+    /// 减少硬连接数量
+    pub fn hard_link_del(&mut self) {
+        self.hard_links_num -= 1;
+    }
+    pub fn get_hard_link_num(&self) -> u32 {
+        self.hard_links_num
     }
 }
 /// A directory entry
