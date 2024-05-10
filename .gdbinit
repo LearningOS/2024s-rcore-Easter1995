@@ -1,3 +1,5 @@
+b src/main.rs:76 
+b rust_main 
 b src/syscall/fs.rs:93
 
 define dss
