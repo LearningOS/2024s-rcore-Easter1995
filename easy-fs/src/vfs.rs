@@ -203,7 +203,7 @@ impl Inode {
         root_inode.modify_disk_inode(|root_inode| {
             // assert it is a directory
             assert!(root_inode.is_dir());
-            // has the file been created?
+            // 遍历根目录下所有文件，如果找到名字对得上的就将这个目录项删除
             let file_count = (root_inode.size as usize) / DIRENT_SZ;
             let mut dirent = DirEntry::empty();
             for i in 0..file_count {
@@ -212,8 +212,8 @@ impl Inode {
                     DIRENT_SZ,
                 );
                 if dirent.name() == name {
-                    //找到了，将其删除
                     let new_dirent = DirEntry::empty();
+                    // 将目录项替换为空目录
                     root_inode.write_at(DIRENT_SZ * i, new_dirent.as_bytes(), &self.block_device);
                     break;
                 }
