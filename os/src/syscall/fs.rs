@@ -1,8 +1,8 @@
 //! File and filesystem-related syscalls
-use core::mem::{size_of, transmute};
 use crate::fs::{open_file, OpenFlags, Stat};
 use crate::mm::{translated_byte_buffer, translated_str, UserBuffer};
 use crate::task::{current_task, current_user_token};
+use core::mem::{size_of, transmute};
 
 pub fn sys_write(fd: usize, buf: *const u8, len: usize) -> isize {
     trace!("kernel:pid[{}] sys_write", current_task().unwrap().pid.0);
@@ -104,14 +104,10 @@ pub fn sys_fstat(_fd: usize, _st: *mut Stat) -> isize {
         let mut st_buffer = translated_byte_buffer(token, _st as *const u8, size_of::<Stat>());
         if st_buffer[0].len() >= size_of::<Stat>() {
             let page_ptr = st_buffer[0].as_mut_ptr() as *mut Stat;
-            unsafe {
-                (*page_ptr) = stat
-            }
+            unsafe { (*page_ptr) = stat }
         } else {
             let available_len = st_buffer[0].len();
-            let stat_bytes: [u8; size_of::<Stat>()] = unsafe {
-                transmute(stat)
-            };
+            let stat_bytes: [u8; size_of::<Stat>()] = unsafe { transmute(stat) };
             st_buffer[0].copy_from_slice(&stat_bytes[..available_len]);
             st_buffer[1].copy_from_slice(&stat_bytes[available_len..]);
         }
@@ -132,7 +128,10 @@ pub fn sys_linkat(_old_name: *const u8, _new_name: *const u8) -> isize {
     let new_name = translated_str(token, _new_name);
     let root_inode = crate::fs::ROOT_INODE.clone();
     if let Some(_inode) = root_inode.find(old_name.as_str()) {
-        return root_inode.create_link(new_name.as_str(), root_inode.find_inode_id_by_name(old_name.as_str()).unwrap());
+        return root_inode.create_link(
+            new_name.as_str(),
+            root_inode.find_inode_id_by_name(old_name.as_str()).unwrap(),
+        );
     }
     -1
 }
