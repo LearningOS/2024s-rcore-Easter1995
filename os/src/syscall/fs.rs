@@ -130,8 +130,7 @@ pub fn sys_linkat(_old_name: *const u8, _new_name: *const u8) -> isize {
     let token = current_user_token();
     let old_name = translated_str(token, _old_name);
     let new_name = translated_str(token, _new_name);
-    let res = ROOT_INODE.create_link(new_name.as_str(), old_name.as_str());
-    res
+    ROOT_INODE.create_link(new_name.as_str(), old_name.as_str())
 }
 
 /// YOUR JOB: Implement unlinkat.
