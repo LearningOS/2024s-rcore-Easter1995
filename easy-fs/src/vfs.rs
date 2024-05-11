@@ -157,70 +157,68 @@ impl Inode {
         // release efs lock automatically by compiler
     }
     /// 相当于新建一个目录项，但是此目录项指向的inode跟old_name那项的inode一样
-    pub fn create_link(&self, new_name: &str, old_name: &str) -> isize {
+    pub fn create_link(&self, new_name: &str, inode_id: u32) -> isize {
         let mut fs = self.fs.lock();
-        let op1 = |root_inode: &DiskInode| {
+        let op = |root_inode: &DiskInode| {
             // assert it is a directory
             assert!(root_inode.is_dir());
             // 是否链接同名文件?
             self.find_inode_id(new_name, root_inode)
         };
-        if self.read_disk_inode(op1).is_some() {
+        if self.read_disk_inode(op).is_some() {
             return -1;
         }
 
-        // 先判断是否能找到这个inode
-        if let Some(inode) = self.find(old_name) {
-            // 再找到这个inode_id
-            let inode_id = self.find_inode_id_by_name(old_name).unwrap();
-            let dirent = DirEntry::new(new_name, inode_id);
-            self.modify_disk_inode(|root_inode| {
-                let file_count = (root_inode.size as usize) / DIRENT_SZ;
-                let new_size = (file_count + 1) * DIRENT_SZ;
-                self.increase_size(new_size as u32, root_inode, &mut fs);
-                root_inode.write_at(
-                    file_count * DIRENT_SZ,
-                    dirent.as_bytes(),
-                    &self.block_device,
-                );
-            });
-            inode.modify_disk_inode(DiskInode::hard_link_add);
-            0
-        } else {
-            -1
-        }
+        let dirent = DirEntry::new(new_name, inode_id);
+        self.modify_disk_inode(|root_inode| {
+            let file_count = (root_inode.size as usize) / DIRENT_SZ;
+            let new_size = (file_count + 1) * DIRENT_SZ;
+            self.increase_size(new_size as u32, root_inode, &mut fs);
+            root_inode.write_at(
+                file_count * DIRENT_SZ,
+                dirent.as_bytes(),
+                &self.block_device,
+            );
+        });
+        let (block_id, block_offset) = fs.get_disk_inode_pos(inode_id);
+        let inode = Arc::new(Self::new(
+            block_id,
+            block_offset,
+            self.fs.clone(),
+            self.block_device.clone(),
+        ));
+        inode.modify_disk_inode(DiskInode::hard_link_add);
+        drop(fs);
+        0
     }
     /// 删除硬连接
-    pub fn del_link(&self, name: &str) -> isize {
-        // 确保该名字有对应的inode
-        if let Some(inode) = self.find(name) {
-            // 硬连接数-1
-            inode.modify_disk_inode(DiskInode::hard_link_del);
-            // 只有一个硬连接
-            if inode.read_disk_inode(DiskInode::get_hard_link_num) == 1 {
-                self.clear();
-            }
-            // 否则清除掉对应的目录项
-            self.modify_disk_inode(|root_inode| {
-                // assert it is a directory
-                assert!(root_inode.is_dir());
-             
-                let file_count = (root_inode.size as usize) / DIRENT_SZ;
-                let mut dirent = DirEntry::empty();
-                // 在目录表中删除名为name的那一项
-                for i in 0..file_count {
-                    assert_eq!(
-                        root_inode.read_at(DIRENT_SZ * i, dirent.as_bytes_mut(), &self.block_device,),
-                        DIRENT_SZ,
-                    );
-                    if dirent.name() == name {
-                        let new_dirent = DirEntry::empty();
-                        root_inode.write_at(DIRENT_SZ * i, new_dirent.as_bytes(), &self.block_device);
-                        break;
-                    }
-                }
-            });   
+    pub fn del_link(&self, name: &str, root_inode: &Inode) -> isize {
+        let links = self.read_disk_inode(DiskInode::get_hard_link_num);
+        // 如果是最后一个连接，不止要删除目录项，还要清空数据块
+        if links == 1 {
+            self.clear();
         }
+        self.modify_disk_inode(DiskInode::hard_link_del);
+        // 清除掉对应的目录项
+        root_inode.modify_disk_inode(|root_inode| {
+            // assert it is a directory
+            assert!(root_inode.is_dir());
+            // has the file been created?
+            let file_count = (root_inode.size as usize) / DIRENT_SZ;
+            let mut dirent = DirEntry::empty();
+            for i in 0..file_count {
+                assert_eq!(
+                    root_inode.read_at(DIRENT_SZ * i, dirent.as_bytes_mut(), &self.block_device,),
+                    DIRENT_SZ,
+                );
+                if dirent.name() == name {
+                    //找到了，将其删除
+                    let new_dirent = DirEntry::empty();
+                    root_inode.write_at(DIRENT_SZ * i, new_dirent.as_bytes(), &self.block_device);
+                    break;
+                }
+            }
+        });
         block_cache_sync_all();
         0
     }

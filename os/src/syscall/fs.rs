@@ -1,6 +1,6 @@
 //! File and filesystem-related syscalls
 use core::mem::{size_of, transmute};
-use crate::fs::{open_file, OpenFlags, Stat, ROOT_INODE};
+use crate::fs::{open_file, OpenFlags, Stat};
 use crate::mm::{translated_byte_buffer, translated_str, UserBuffer};
 use crate::task::{current_task, current_user_token};
 
@@ -130,7 +130,11 @@ pub fn sys_linkat(_old_name: *const u8, _new_name: *const u8) -> isize {
     let token = current_user_token();
     let old_name = translated_str(token, _old_name);
     let new_name = translated_str(token, _new_name);
-    ROOT_INODE.create_link(new_name.as_str(), old_name.as_str())
+    let root_inode = crate::fs::ROOT_INODE.clone();
+    if let Some(_inode) = root_inode.find(old_name.as_str()) {
+        return root_inode.create_link(new_name.as_str(), root_inode.find_inode_id_by_name(old_name.as_str()).unwrap());
+    }
+    -1
 }
 
 /// YOUR JOB: Implement unlinkat.
@@ -141,5 +145,9 @@ pub fn sys_unlinkat(_name: *const u8) -> isize {
     );
     let token = current_user_token();
     let name = translated_str(token, _name);
-    ROOT_INODE.del_link(name.as_str())
+    let root_inode = crate::fs::ROOT_INODE.clone();
+    if let Some(inode) = root_inode.find(name.as_str()) {
+        return inode.del_link(name.as_str(), &root_inode);
+    }
+    -1
 }
