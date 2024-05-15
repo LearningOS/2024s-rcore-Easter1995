@@ -48,11 +48,17 @@ pub fn sys_mutex_create(blocking: bool) -> isize {
         .find(|(_, item)| item.is_none())
         .map(|(id, _)| id)
     {
+        // mutex_list里面有空余id
         process_inner.mutex_list[id] = mutex;
+        process_inner.available[id] = 1; // 互斥锁创建了一个资源
         id as isize
     } else {
+        // mutex_list里面没有空余id
+        let new_id = process_inner.mutex_list.len();
         process_inner.mutex_list.push(mutex);
-        process_inner.mutex_list.len() as isize - 1
+        process_inner.available.resize(new_id + 1, 0);
+        process_inner.available[new_id] = 1; // 互斥锁创建了一个资源
+        new_id as isize
     }
 }
 /// mutex lock syscall
@@ -69,11 +75,24 @@ pub fn sys_mutex_lock(mutex_id: usize) -> isize {
             .tid
     );
     let process = current_process();
-    let process_inner = process.inner_exclusive_access();
+    let mut process_inner = process.inner_exclusive_access();
     let mutex = Arc::clone(process_inner.mutex_list[mutex_id].as_ref().unwrap());
+    let tid = current_task().unwrap().get_tid();
+    process_inner.need[tid][mutex_id] = 1; // 当前线程需要一份资源
+    // 死锁检测
+    if process_inner.deadlock_detect_enabled && process_inner.has_mutex_deadlock(tid) {
+        return -0xdead;
+    }
+    // 没有死锁，正常分配资源
+    mutex.lock();
+    // 成功获取资源后
+    process_inner.available[mutex_id] = 0; // mutex_id资源-1
+    process_inner.need[tid][mutex_id] = 0; // tid线程需要的mutex_id资源-1
+    process_inner.allocation[tid][mutex_id] = 1; // 分配给tid线程的mutex_id资源+1
+
     drop(process_inner);
     drop(process);
-    mutex.lock();
+
     0
 }
 /// mutex unlock syscall
@@ -90,11 +109,15 @@ pub fn sys_mutex_unlock(mutex_id: usize) -> isize {
             .tid
     );
     let process = current_process();
-    let process_inner = process.inner_exclusive_access();
+    let mut process_inner = process.inner_exclusive_access();
     let mutex = Arc::clone(process_inner.mutex_list[mutex_id].as_ref().unwrap());
+    mutex.unlock();
+    // 释放一个资源
+    let tid = process_inner.get_tid();
+    process_inner.available[mutex_id] = 1; // mutex_id的资源+1
+    process_inner.allocation[tid][mutex_id] = 0; // 分配给tid线程的mutex_id资源-1
     drop(process_inner);
     drop(process);
-    mutex.unlock();
     0
 }
 /// semaphore create syscall
@@ -243,9 +266,12 @@ pub fn sys_condvar_wait(condvar_id: usize, mutex_id: usize) -> isize {
     0
 }
 /// enable deadlock detection syscall
-///
+/// _enable: 为 1 表示启用死锁检测， 0 表示禁用死锁检测
 /// YOUR JOB: Implement deadlock detection, but might not all in this syscall
 pub fn sys_enable_deadlock_detect(_enabled: usize) -> isize {
     trace!("kernel: sys_enable_deadlock_detect NOT IMPLEMENTED");
-    -1
+    let process = current_process();
+    let mut process_inner = process.inner_exclusive_access();
+    process_inner.deadlock_detect_enabled = _enabled == 1;
+    0
 }

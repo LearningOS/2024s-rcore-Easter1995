@@ -2,7 +2,7 @@
 
 use super::id::RecycleAllocator;
 use super::manager::insert_into_pid2process;
-use super::TaskControlBlock;
+use super::{current_task, TaskControlBlock};
 use super::{add_task, SignalFlags};
 use super::{pid_alloc, PidHandle};
 use crate::fs::{File, Stdin, Stdout};
@@ -49,6 +49,14 @@ pub struct ProcessControlBlockInner {
     pub semaphore_list: Vec<Option<Arc<Semaphore>>>,
     /// condvar list
     pub condvar_list: Vec<Option<Arc<Condvar>>>,
+    /// 是否打开死锁检测
+    pub deadlock_detect_enabled: bool,
+    /// 可用资源数
+    pub available: Vec<usize>,
+    /// 已分配资源数
+    pub allocation: Vec<Vec<usize>>,
+    /// 还需要的资源数
+    pub need: Vec<Vec<usize>>,
 }
 
 impl ProcessControlBlockInner {
@@ -81,6 +89,55 @@ impl ProcessControlBlockInner {
     /// get a task with tid in this process
     pub fn get_task(&self, tid: usize) -> Arc<TaskControlBlock> {
         self.tasks[tid].as_ref().unwrap().clone()
+    }
+    /// get tid
+    pub fn get_tid(&self) -> usize {
+        current_task()
+            .unwrap()
+            .inner_exclusive_access()
+            .res
+            .as_ref()
+            .unwrap()
+            .tid
+    }
+    /// 更新矩阵
+    pub fn update_matrix_when_create_thread(&mut self, new_tid: usize) -> isize {
+        if new_tid + 1 > self.allocation.len() {
+            self.allocation.resize(new_tid + 1, vec![0]);
+            self.need.resize(new_tid + 1, vec![0]);
+        }
+        0
+    }
+    /// 判断有无mutex死锁
+    pub fn has_mutex_deadlock(&mut self, mutex_id: usize) -> bool {
+        let thread_num = self.thread_count();
+        let mut work = self.available.clone();
+        let mut finish = vec![false; thread_num];
+        loop {
+            let mut find_thread = false;
+            // 遍历线程，找到need < available的线程
+            for i in 0..thread_num {
+                // 获取每个线程的id
+                let tid = self.tasks[i].as_ref().unwrap().get_tid();
+                // 判断这个线程能否结束
+                if !finish[tid] && self.need[tid][mutex_id] <= work[mutex_id] {
+                    find_thread = true;
+                    work[mutex_id] += self.allocation[tid][mutex_id];
+                    finish[tid] = true;
+                }
+            }
+            if !find_thread {
+                // 如果没找到线程满足条件
+                for fin in finish {
+                    if !fin {
+                        // 如果有线程没结束，返回存在死锁
+                        return true;
+                    }
+                }
+                // 如果线程都结束了，返回没有死锁
+                return false;
+            }
+        }
     }
 }
 
@@ -119,6 +176,10 @@ impl ProcessControlBlock {
                     mutex_list: Vec::new(),
                     semaphore_list: Vec::new(),
                     condvar_list: Vec::new(),
+                    deadlock_detect_enabled: false,
+                    available: Vec::new(),
+                    allocation: Vec::new(),
+                    need: Vec::new(),
                 })
             },
         });
@@ -245,6 +306,10 @@ impl ProcessControlBlock {
                     mutex_list: Vec::new(),
                     semaphore_list: Vec::new(),
                     condvar_list: Vec::new(),
+                    deadlock_detect_enabled: false,
+                    available: Vec::new(),
+                    allocation: Vec::new(),
+                    need: Vec::new(),
                 })
             },
         });

@@ -8,6 +8,8 @@ os/src/link_app.S
 os/last-*
 os/Cargo.lock
 os/.gdb_history
+user
+ci-user
 user/target/*
 user/.idea/*
 user/Cargo.lock
