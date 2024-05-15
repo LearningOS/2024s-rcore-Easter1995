@@ -52,11 +52,17 @@ pub struct ProcessControlBlockInner {
     /// 是否打开死锁检测
     pub deadlock_detect_enabled: bool,
     /// 可用资源数
-    pub available: Vec<usize>,
+    pub available_mutex: Vec<usize>,
     /// 已分配资源数
-    pub allocation: Vec<Vec<usize>>,
+    pub allocation_mutex: Vec<Vec<usize>>,
     /// 还需要的资源数
-    pub need: Vec<Vec<usize>>,
+    pub need_mutex: Vec<Vec<usize>>,
+    /// 可用资源数
+    pub available_sem: Vec<usize>,
+    /// 已分配资源数
+    pub allocation_sem: Vec<Vec<usize>>,
+    /// 还需要的资源数
+    pub need_sem: Vec<Vec<usize>>,
 }
 
 impl ProcessControlBlockInner {
@@ -100,18 +106,20 @@ impl ProcessControlBlockInner {
             .unwrap()
             .tid
     }
-    /// 更新矩阵
+    /// 创建新线程后更新矩阵
     pub fn update_matrix_when_create_thread(&mut self, new_tid: usize) -> isize {
-        if new_tid + 1 > self.allocation.len() {
-            self.allocation.resize(new_tid + 1, vec![0]);
-            self.need.resize(new_tid + 1, vec![0]);
+        if new_tid + 1 > self.allocation_mutex.len() {
+            self.allocation_mutex.resize(new_tid + 1, vec![0]);
+            self.need_mutex.resize(new_tid + 1, vec![0]);
+            self.allocation_sem.resize(new_tid + 1, vec![0]);
+            self.need_sem.resize(new_tid + 1, vec![0]);
         }
         0
     }
     /// 判断有无mutex死锁
-    pub fn has_mutex_deadlock(&mut self, mutex_id: usize) -> bool {
+    pub fn has_mutex_deadlock(&mut self, lock_id: usize, available: Vec<usize>, need: Vec<Vec<usize>>, allocation: Vec<Vec<usize>>) -> bool {
         let thread_num = self.thread_count();
-        let mut work = self.available.clone();
+        let mut work = available;
         let mut finish = vec![false; thread_num];
         loop {
             let mut find_thread = false;
@@ -120,9 +128,9 @@ impl ProcessControlBlockInner {
                 // 获取每个线程的id
                 let tid = self.tasks[i].as_ref().unwrap().get_tid();
                 // 判断这个线程能否结束
-                if !finish[tid] && self.need[tid][mutex_id] <= work[mutex_id] {
+                if !finish[tid] && need[tid][lock_id] <= work[lock_id] {
                     find_thread = true;
-                    work[mutex_id] += self.allocation[tid][mutex_id];
+                    work[lock_id] += allocation[tid][lock_id];
                     finish[tid] = true;
                 }
             }
@@ -177,9 +185,12 @@ impl ProcessControlBlock {
                     semaphore_list: Vec::new(),
                     condvar_list: Vec::new(),
                     deadlock_detect_enabled: false,
-                    available: Vec::new(),
-                    allocation: Vec::new(),
-                    need: Vec::new(),
+                    available_mutex: Vec::new(),
+                    allocation_mutex: Vec::new(),
+                    need_mutex: Vec::new(),
+                    available_sem: Vec::new(),
+                    allocation_sem: Vec::new(),
+                    need_sem: Vec::new(),
                 })
             },
         });
@@ -307,9 +318,12 @@ impl ProcessControlBlock {
                     semaphore_list: Vec::new(),
                     condvar_list: Vec::new(),
                     deadlock_detect_enabled: false,
-                    available: Vec::new(),
-                    allocation: Vec::new(),
-                    need: Vec::new(),
+                    available_mutex: Vec::new(),
+                    allocation_mutex: Vec::new(),
+                    need_mutex: Vec::new(),
+                    available_sem: Vec::new(),
+                    allocation_sem: Vec::new(),
+                    need_sem: Vec::new(),
                 })
             },
         });

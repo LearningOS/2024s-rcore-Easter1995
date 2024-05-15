@@ -79,7 +79,7 @@ impl TaskControlBlock {
             },
         }
     }
-
+    /// 获取tid
     pub fn get_tid(&self) -> usize {
         self.inner_exclusive_access()
             .res
