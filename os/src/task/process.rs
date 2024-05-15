@@ -106,33 +106,24 @@ impl ProcessControlBlockInner {
             .unwrap()
             .tid
     }
-    /// 创建新线程后更新矩阵
-    pub fn update_matrix_when_create_thread(&mut self, new_tid: usize) -> isize {
-        if new_tid + 1 > self.allocation_mutex.len() {
-            self.allocation_mutex.resize(new_tid + 1, vec![0]);
-            self.need_mutex.resize(new_tid + 1, vec![0]);
-            self.allocation_sem.resize(new_tid + 1, vec![0]);
-            self.need_sem.resize(new_tid + 1, vec![0]);
-        }
-        0
-    }
-    /// 判断有无mutex死锁
-    pub fn has_mutex_deadlock(&mut self, lock_id: usize, available: Vec<usize>, need: Vec<Vec<usize>>, allocation: Vec<Vec<usize>>) -> bool {
+    /// 判断有无死锁
+    pub fn has_deadlock(&mut self, lock_id: usize, available: Vec<usize>, need: Vec<Vec<usize>>, allocation: Vec<Vec<usize>>) -> bool {
         let thread_num = self.thread_count();
-        let mut work = available;
+        let mut work = available.clone();
         let mut finish = vec![false; thread_num];
         loop {
             let mut find_thread = false;
-            // 遍历线程，找到need < available的线程
+            // 遍历线程，找到need <= work的线程
             for i in 0..thread_num {
-                // 获取每个线程的id
-                let tid = self.tasks[i].as_ref().unwrap().get_tid();
                 // 判断这个线程能否结束
-                if !finish[tid] && need[tid][lock_id] <= work[lock_id] {
+                if !finish[i] && need[i][lock_id] <= work[lock_id] {
                     find_thread = true;
-                    work[lock_id] += allocation[tid][lock_id];
-                    finish[tid] = true;
+                    work[lock_id] += allocation[i][lock_id];
+                    finish[i] = true;
                 }
+                if self.tasks.get(i).is_none() {
+                    finish[i] = true;
+                }   
             }
             if !find_thread {
                 // 如果没找到线程满足条件
@@ -185,12 +176,12 @@ impl ProcessControlBlock {
                     semaphore_list: Vec::new(),
                     condvar_list: Vec::new(),
                     deadlock_detect_enabled: false,
-                    available_mutex: Vec::new(),
-                    allocation_mutex: Vec::new(),
-                    need_mutex: Vec::new(),
-                    available_sem: Vec::new(),
-                    allocation_sem: Vec::new(),
-                    need_sem: Vec::new(),
+                    available_mutex: vec![0;20],
+                    allocation_mutex: vec![vec![0;10];20],
+                    need_mutex: vec![vec![0;10];20],
+                    available_sem: vec![0;20],
+                    allocation_sem: vec![vec![0;10];20],
+                    need_sem: vec![vec![0;10];20],
                 })
             },
         });
@@ -318,12 +309,12 @@ impl ProcessControlBlock {
                     semaphore_list: Vec::new(),
                     condvar_list: Vec::new(),
                     deadlock_detect_enabled: false,
-                    available_mutex: Vec::new(),
-                    allocation_mutex: Vec::new(),
-                    need_mutex: Vec::new(),
-                    available_sem: Vec::new(),
-                    allocation_sem: Vec::new(),
-                    need_sem: Vec::new(),
+                    available_mutex: vec![0;20],
+                    allocation_mutex: vec![vec![0;10];20],
+                    need_mutex: vec![vec![0;10];20],
+                    available_sem: vec![0;20],
+                    allocation_sem: vec![vec![0;10];20],
+                    need_sem: vec![vec![0;10];20],
                 })
             },
         });

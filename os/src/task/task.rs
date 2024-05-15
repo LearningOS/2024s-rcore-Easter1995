@@ -80,12 +80,15 @@ impl TaskControlBlock {
         }
     }
     /// 获取tid
-    pub fn get_tid(&self) -> usize {
-        self.inner_exclusive_access()
-            .res
-            .as_ref()
-            .unwrap()
-            .tid
+    pub fn get_tid(&self) -> Option<usize> {
+        let inner = self.inner_exclusive_access();
+        if let Some(res) = inner.res.as_ref() {
+            Some(res.tid)
+        } else {
+            // 记录错误日志并返回 None
+            println!("Error: res is None");
+            None
+        }
     }
 }
 

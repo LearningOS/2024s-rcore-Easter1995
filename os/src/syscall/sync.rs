@@ -50,14 +50,14 @@ pub fn sys_mutex_create(blocking: bool) -> isize {
     {
         // mutex_list里面有空余id
         process_inner.mutex_list[id] = mutex;
-        process_inner.available_mutex[id] = 1; // 互斥锁创建了一个资源
+        process_inner.available_mutex[id] += 1; // 互斥锁创建了一个资源
         id as isize
     } else {
         // mutex_list里面没有空余id
         let new_id = process_inner.mutex_list.len();
         process_inner.mutex_list.push(mutex);
-        process_inner.available_mutex.resize(new_id + 1, 0);
-        process_inner.available_mutex[new_id] = 1; // 互斥锁创建了一个资源
+        // process_inner.available_mutex.resize(new_id + 1, 0);
+        process_inner.available_mutex[new_id] += 1; // 互斥锁创建了一个资源
         new_id as isize
     }
 }
@@ -79,24 +79,23 @@ pub fn sys_mutex_lock(mutex_id: usize) -> isize {
     let mutex = Arc::clone(process_inner.mutex_list[mutex_id].as_ref().unwrap());
     let tid = process_inner.get_tid();
     // 当前线程需要一份资源
-    process_inner.need_mutex[tid][mutex_id] = 1; 
+    process_inner.need_mutex[tid][mutex_id] += 1; 
     // 死锁检测
     let available = process_inner.available_mutex.clone();
     let need = process_inner.need_mutex.clone();
     let allocation = process_inner.allocation_mutex.clone();
-    if process_inner.deadlock_detect_enabled && process_inner.has_mutex_deadlock(tid, available, need, allocation) {
+    if process_inner.deadlock_detect_enabled && process_inner.has_deadlock(tid, available, need, allocation) {
         return -0xdead;
     }
+
+    process_inner.available_mutex[mutex_id] -= 0; // mutex_id资源-1
+    process_inner.need_mutex[tid][mutex_id] = 0; // tid线程需要的mutex_id资源-1
+    process_inner.allocation_mutex[tid][mutex_id] += 1; // 分配给tid线程的mutex_id资源+1
+
     drop(process_inner);
     drop(process);
     // 没有死锁，正常分配资源
     mutex.lock();
-    // 成功获取资源后
-    let process = current_process();
-    let mut process_inner = process.inner_exclusive_access();
-    process_inner.available_mutex[mutex_id] = 0; // mutex_id资源-1
-    process_inner.need_mutex[tid][mutex_id] = 0; // tid线程需要的mutex_id资源-1
-    process_inner.allocation_mutex[tid][mutex_id] = 1; // 分配给tid线程的mutex_id资源+1
     0
 }
 /// mutex unlock syscall
@@ -113,17 +112,16 @@ pub fn sys_mutex_unlock(mutex_id: usize) -> isize {
             .tid
     );
     let process = current_process();
-    let process_inner = process.inner_exclusive_access();
+    let mut process_inner = process.inner_exclusive_access();
+    
+    let tid = process_inner.get_tid();
+    process_inner.allocation_mutex[tid][mutex_id] -= 1;
+    process_inner.need_mutex[tid][mutex_id] = 0;
+    
     let mutex = Arc::clone(process_inner.mutex_list[mutex_id].as_ref().unwrap());
     drop(process_inner);
     drop(process);
     mutex.unlock();
-    // 释放一个资源
-    let process = current_process();
-    let mut process_inner = process.inner_exclusive_access();
-    let tid = process_inner.get_tid();
-    process_inner.available_mutex[mutex_id] = 1; // mutex_id的资源+1
-    process_inner.allocation_mutex[tid][mutex_id] = 0; // 分配给tid线程的mutex_id资源-1
     0
 }
 /// semaphore create syscall
@@ -157,6 +155,7 @@ pub fn sys_semaphore_create(res_count: usize) -> isize {
         process_inner
             .semaphore_list
             .push(Some(Arc::new(Semaphore::new(res_count))));
+        // process_inner.available_sem.resize(new_id + 1, 0);
         process_inner.available_sem[new_id] = res_count;
         new_id
     };
@@ -176,20 +175,15 @@ pub fn sys_semaphore_up(sem_id: usize) -> isize {
             .tid
     );
     let process = current_process();
-    let process_inner = process.inner_exclusive_access();
+    let mut process_inner = process.inner_exclusive_access();
     let sem = Arc::clone(process_inner.semaphore_list[sem_id].as_ref().unwrap());
+    let tid = process_inner.get_tid();
+    process_inner.allocation_sem[tid][sem_id]-=1;
+    process_inner.need_sem[tid][sem_id] = 0;
+
     drop(process_inner);
     drop(process);
     sem.up();
-    // 更新矩阵
-    let process = current_process();
-    let mut process_inner = process.inner_exclusive_access();
-    let tid = process_inner.get_tid();
-    process_inner.available_sem[sem_id] += 1;
-    // process_inner.need_sem[tid][sem_id] = 0; // 本线程需要的该资源-1
-    process_inner.allocation_sem[tid][sem_id] -= 1; // 给本线程分配的资源-1
-    drop(process_inner);
-    drop(process);
     0
 }
 /// semaphore down syscall
@@ -215,20 +209,17 @@ pub fn sys_semaphore_down(sem_id: usize) -> isize {
     let available = process_inner.available_sem.clone();
     let need = process_inner.need_sem.clone();
     let allocation = process_inner.allocation_sem.clone();
-    if process_inner.deadlock_detect_enabled && process_inner.has_mutex_deadlock(sem_id, available, need, allocation) {
+    if process_inner.deadlock_detect_enabled && process_inner.has_deadlock(sem_id, available, need, allocation) {
         return -0xdead;
     }
-    drop(process_inner);
-    // 没有死锁，正常分配资源
-    sem.down();
-    // 更新矩阵
-    let process = current_process();
-    let mut process_inner = process.inner_exclusive_access();
+
     process_inner.available_sem[sem_id] -= 1;
     process_inner.need_mutex[tid][sem_id] -= 1;
     process_inner.allocation_sem[tid][sem_id] += 1;
+
     drop(process_inner);
-    drop(process);
+    // 没有死锁，正常分配资源
+    sem.down();
     0
 }
 /// condvar create syscall
