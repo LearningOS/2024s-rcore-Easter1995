@@ -107,8 +107,14 @@ impl ProcessControlBlockInner {
             .tid
     }
     /// 判断有无死锁
-    pub fn has_deadlock(&mut self, lock_id: usize, available: Vec<usize>, need: Vec<Vec<usize>>, allocation: Vec<Vec<usize>>) -> bool {
+    pub fn has_deadlock(&mut self, lock_id: usize, available: Vec<usize>, need: Vec<Vec<usize>>, allocation: Vec<Vec<usize>>, kind: usize) -> bool {
         let thread_num = self.thread_count();
+        let lock_num = if kind == 0 {
+            self.mutex_list.len()
+        } else {
+            self.semaphore_list.len()
+        };
+        print!("hello");
         let mut work = available.clone();
         let mut finish = vec![false; thread_num];
         loop {
@@ -118,8 +124,10 @@ impl ProcessControlBlockInner {
                 // 判断这个线程能否结束
                 if !finish[i] && need[i][lock_id] <= work[lock_id] {
                     find_thread = true;
-                    work[lock_id] += allocation[i][lock_id];
                     finish[i] = true;
+                    for j in 0..lock_num {
+                        work[j] += allocation[i][j];
+                    }
                     break;
                 }
                 if self.tasks.get(i).is_none() {

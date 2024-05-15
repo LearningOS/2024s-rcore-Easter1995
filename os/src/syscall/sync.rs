@@ -84,8 +84,8 @@ pub fn sys_mutex_lock(mutex_id: usize) -> isize {
     let available = process_inner.available_mutex.clone();
     let need = process_inner.need_mutex.clone();
     let allocation = process_inner.allocation_mutex.clone();
-    if process_inner.deadlock_detect_enabled && process_inner.has_deadlock(tid, available, need, allocation) {
-        return -0xdead;
+    if process_inner.deadlock_detect_enabled && process_inner.has_deadlock(tid, available, need, allocation, 0) {
+        return -0xDEAD;
     }
 
     process_inner.available_mutex[mutex_id] = 0; // mutex_id资源-1
@@ -209,8 +209,8 @@ pub fn sys_semaphore_down(sem_id: usize) -> isize {
     let available = process_inner.available_sem.clone();
     let need = process_inner.need_sem.clone();
     let allocation = process_inner.allocation_sem.clone();
-    if process_inner.deadlock_detect_enabled && process_inner.has_deadlock(sem_id, available, need, allocation) {
-        return -0xdead;
+    if process_inner.deadlock_detect_enabled && process_inner.has_deadlock(sem_id, available, need, allocation, 1) {
+        return -0xDEAD;
     }
 
     process_inner.available_sem[sem_id] -= 1;
