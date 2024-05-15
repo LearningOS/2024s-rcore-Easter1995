@@ -88,9 +88,9 @@ pub fn sys_mutex_lock(mutex_id: usize) -> isize {
         return -0xdead;
     }
 
-    process_inner.available_mutex[mutex_id] -= 0; // mutex_id资源-1
+    process_inner.available_mutex[mutex_id] = 0; // mutex_id资源-1
     process_inner.need_mutex[tid][mutex_id] = 0; // tid线程需要的mutex_id资源-1
-    process_inner.allocation_mutex[tid][mutex_id] += 1; // 分配给tid线程的mutex_id资源+1
+    process_inner.allocation_mutex[tid][mutex_id] = 1; // 分配给tid线程的mutex_id资源+1
 
     drop(process_inner);
     drop(process);
@@ -178,8 +178,8 @@ pub fn sys_semaphore_up(sem_id: usize) -> isize {
     let mut process_inner = process.inner_exclusive_access();
     let sem = Arc::clone(process_inner.semaphore_list[sem_id].as_ref().unwrap());
     let tid = process_inner.get_tid();
-    process_inner.allocation_sem[tid][sem_id]-=1;
-    process_inner.need_sem[tid][sem_id] = 0;
+    process_inner.allocation_sem[tid][sem_id] -= 1;
+    process_inner.available_sem[sem_id] += 1;
 
     drop(process_inner);
     drop(process);

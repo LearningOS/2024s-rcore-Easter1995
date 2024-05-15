@@ -120,9 +120,11 @@ impl ProcessControlBlockInner {
                     find_thread = true;
                     work[lock_id] += allocation[i][lock_id];
                     finish[i] = true;
+                    break;
                 }
                 if self.tasks.get(i).is_none() {
                     finish[i] = true;
+                    break;
                 }   
             }
             if !find_thread {
