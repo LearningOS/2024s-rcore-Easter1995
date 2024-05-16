@@ -50,14 +50,14 @@ pub fn sys_mutex_create(blocking: bool) -> isize {
     {
         // mutex_list里面有空余id
         process_inner.mutex_list[id] = mutex;
-        process_inner.available_mutex[id] += 1; // 互斥锁创建了一个资源
+        process_inner.available_mutex[id] = 1; // 互斥锁创建了一个资源
         id as isize
     } else {
         // mutex_list里面没有空余id
         let new_id = process_inner.mutex_list.len();
         process_inner.mutex_list.push(mutex);
         // process_inner.available_mutex.resize(new_id + 1, 0);
-        process_inner.available_mutex[new_id] += 1; // 互斥锁创建了一个资源
+        process_inner.available_mutex[new_id] = 1; // 互斥锁创建了一个资源
         new_id as isize
     }
 }
@@ -81,10 +81,7 @@ pub fn sys_mutex_lock(mutex_id: usize) -> isize {
     // 当前线程需要一份资源
     process_inner.need_mutex[tid][mutex_id] += 1; 
     // 死锁检测
-    let available = process_inner.available_mutex.clone();
-    let need = process_inner.need_mutex.clone();
-    let allocation = process_inner.allocation_mutex.clone();
-    if process_inner.deadlock_detect_enabled && process_inner.has_deadlock(tid, available, need, allocation, 0) {
+    if process_inner.deadlock_detect_enabled && process_inner.mutex_deadlock_detect(mutex_id) {
         return -0xDEAD;
     }
 
@@ -149,6 +146,7 @@ pub fn sys_semaphore_create(res_count: usize) -> isize {
         // 有空余id
         process_inner.semaphore_list[id] = Some(Arc::new(Semaphore::new(res_count)));
         process_inner.available_sem[id] = res_count;
+        println!("create sem lock:{:?}", id);
         id
     } else {
         let new_id = process_inner.semaphore_list.len();
@@ -157,6 +155,7 @@ pub fn sys_semaphore_create(res_count: usize) -> isize {
             .push(Some(Arc::new(Semaphore::new(res_count))));
         // process_inner.available_sem.resize(new_id + 1, 0);
         process_inner.available_sem[new_id] = res_count;
+        println!("create sem lock:{:?}", new_id);
         new_id
     };
     id as isize
@@ -177,10 +176,10 @@ pub fn sys_semaphore_up(sem_id: usize) -> isize {
     let process = current_process();
     let mut process_inner = process.inner_exclusive_access();
     let sem = Arc::clone(process_inner.semaphore_list[sem_id].as_ref().unwrap());
+    
     let tid = process_inner.get_tid();
     process_inner.allocation_sem[tid][sem_id] -= 1;
     process_inner.available_sem[sem_id] += 1;
-
     drop(process_inner);
     drop(process);
     sem.up();
@@ -209,14 +208,12 @@ pub fn sys_semaphore_down(sem_id: usize) -> isize {
     let available = process_inner.available_sem.clone();
     let need = process_inner.need_sem.clone();
     let allocation = process_inner.allocation_sem.clone();
-    if process_inner.deadlock_detect_enabled && process_inner.has_deadlock(sem_id, available, need, allocation, 1) {
+    if process_inner.deadlock_detect_enabled && process_inner.sem_deadlock_detect(sem_id, available, need, allocation) {
         return -0xDEAD;
     }
-
     process_inner.available_sem[sem_id] -= 1;
-    process_inner.need_mutex[tid][sem_id] -= 1;
+    process_inner.need_sem[tid][sem_id] -= 1;
     process_inner.allocation_sem[tid][sem_id] += 1;
-
     drop(process_inner);
     // 没有死锁，正常分配资源
     sem.down();

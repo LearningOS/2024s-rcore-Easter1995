@@ -106,47 +106,68 @@ impl ProcessControlBlockInner {
             .unwrap()
             .tid
     }
-    /// 判断有无死锁
-    pub fn has_deadlock(&mut self, lock_id: usize, available: Vec<usize>, need: Vec<Vec<usize>>, allocation: Vec<Vec<usize>>, kind: usize) -> bool {
-        let thread_num = self.thread_count();
-        let lock_num = if kind == 0 {
-            self.mutex_list.len()
-        } else {
-            self.semaphore_list.len()
-        };
-        print!("hello");
-        let mut work = available.clone();
-        let mut finish = vec![false; thread_num];
-        loop {
-            let mut find_thread = false;
-            // 遍历线程，找到need <= work的线程
-            for i in 0..thread_num {
-                // 判断这个线程能否结束
-                if !finish[i] && need[i][lock_id] <= work[lock_id] {
-                    find_thread = true;
-                    finish[i] = true;
-                    for j in 0..lock_num {
-                        work[j] += allocation[i][j];
-                    }
-                    break;
-                }
-                if self.tasks.get(i).is_none() {
-                    finish[i] = true;
-                    break;
-                }   
-            }
-            if !find_thread {
-                // 如果没找到线程满足条件
-                for fin in finish {
-                    if !fin {
-                        // 如果有线程没结束，返回存在死锁
-                        return true;
-                    }
-                }
-                // 如果线程都结束了，返回没有死锁
-                return false;
+    pub fn mutex_deadlock_detect(&self, mutex_id: usize) -> bool {
+        let mut work = self.available_mutex.clone();
+        let mut finish = Vec::new();
+        for x in self.tasks.iter() {
+            if x.is_none() {
+                finish.push(None);
+            } else {
+                finish.push(Some(false));
             }
         }
+        // find
+        let mut done = -1;
+        while done < finish.len() as i32 - 1 {
+            for (i, item) in finish.iter_mut().enumerate() {
+                done = i as i32;
+                if self.need_mutex[i][mutex_id] <= work[mutex_id] && *item == Some(false) {
+                    work[mutex_id] += self.allocation_mutex[i][mutex_id];
+                    *item = Some(true);
+                    break;
+                }
+            }
+        }
+
+        for fin in finish {
+            if let Some(finish) = fin {
+                if !finish {
+                    return true;
+                }
+            }
+        }
+        false
+    }
+    pub fn has_deadlock(&self, sem_id: usize) -> bool {
+        let mut work = self.available_sem.clone();
+        let mut finish = Vec::new();
+        for x in self.tasks.iter() {
+            if x.is_none() {
+                finish.push(None);
+            } else {
+                finish.push(Some(false));
+            }
+        }
+        // find
+        let mut done = -1;
+        while done < finish.len() as i32 - 1 {
+            for (i, item) in finish.iter_mut().enumerate() {
+                done = i as i32;
+                if self.need_sem[i][sem_id] <= work[sem_id] && *item == Some(false) {
+                    work[sem_id] += self.allocation_sem[i][sem_id];
+                    *item = Some(true);
+                    break;
+                }
+            }
+        }
+        for fin in finish {
+            if let Some(finish) = fin {
+                if !finish {
+                    return true;
+                }
+            }
+        }
+        false
     }
 }
 
