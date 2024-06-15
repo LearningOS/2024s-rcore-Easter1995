@@ -9,9 +9,10 @@ edition = "2021"
 [dependencies]
 log = "0.4"
 sbi-rt = { version = "0.0.2", features = ["legacy"] }
-embassy-executor = { version = "0.5.0", path = "../embassy/embassy-executor" , features = ["arch-riscv32", "nightly", "executor-thread", "integrated-timers"] }
+embassy-executor = { version = "0.5.0", path = "../embassy/embassy-executor" , features = ["arch-riscv32", "nightly", "executor-thread"] }
 embassy-time = { version = "0.3.1", path = "../embassy/embassy-time" }
 static_cell = "2.0.0"
+critical-section = { version = "1.1.2" }
 
 [profile.release]
 debug = true
